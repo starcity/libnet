@@ -41,6 +41,9 @@ namespace net
 			virtual void		set_readed_len(uint32_t len) = 0;
 			virtual char *		get_write_buffer() = 0;
 			virtual int32_t 	get_write_buffer_len() = 0;
+			virtual char *      get_unwrited_buffer() = 0;
+			virtual int32_t 	get_unwrited_buffer_len() = 0;
+			virtual void		set_writed_len(int32_t len) = 0;
 			virtual enum TYPE	get_type() = 0; 
 			virtual enum STATUS get_status() = 0;
 			virtual void	    callback_function(int32_t ret,int32_t event) = 0;

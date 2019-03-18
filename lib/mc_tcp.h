@@ -32,6 +32,9 @@ namespace net
 			virtual void		set_readed_len(uint32_t len);
 			virtual char *		get_write_buffer();
 			virtual int32_t 	get_write_buffer_len();
+			virtual char *		get_unwrited_buffer();
+			virtual int32_t 	get_unwrited_buffer_len();
+			virtual void		set_writed_len(int32_t len);
 			virtual enum TYPE	get_type(); 
 			virtual enum STATUS get_status();
 			virtual void	    callback_function(int32_t ret,int32_t event);
@@ -45,6 +48,9 @@ namespace net
 			virtual int32_t		get_client_fd();
 			virtual	void		set_socket_status(net::STATUS status);
 
+		private:
+			int32_t				server_create();
+
 
 		private:
 			net::TYPE					m_type;
@@ -55,6 +61,7 @@ namespace net
 			callback_cb			    	m_cb;		
 			std::shared_ptr<buffer>	    m_buffer;
 			int32_t						m_len;
+			int32_t						m_writed_len;
 			io_server				   *m_io_server;
 			mc_tcp					   *m_ptcp;
 	};

@@ -211,6 +211,8 @@ void io_server::handle_accept(base_socket *psock)
 	set_nonblock(fd);
 
 	set_task(task);
+
+	epoll_ctl(m_epfd,EPOLL_CTL_DEL,fd,NULL);
 }
 
 void io_server::handle_read(base_socket *psock)
@@ -236,13 +238,16 @@ void io_server::handle_write(base_socket *psock,uint32_t event)
 	task.psock = psock;
 	int32_t fd = psock->get_socket_fd();
 	if(psock->get_status() == net::CONNECTED){
-		int32_t	ret = send(fd,psock->get_write_buffer(),psock->get_write_buffer_len(),0); 
-		if(ret == psock->get_write_buffer_len())
-			task.nret = 0;
-		else 
-			task.nret = ret;
+		int32_t	ret = send(fd,psock->get_unwrited_buffer(),psock->get_unwrited_buffer_len(),0); 
+		if(ret != psock->get_unwrited_buffer_len()){
+			psock->set_writed_len(ret);
+			return;
+		}
+		else {
+			task.nret = psock->get_write_buffer_len();
 
 			task.event = net::EVENT_WRITE;   
+		}
 	}
 	else {
 		if(event == EPOLLOUT)

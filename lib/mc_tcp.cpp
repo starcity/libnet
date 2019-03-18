@@ -19,6 +19,8 @@ mc_tcp::mc_tcp(io_server *pio_server,const char *ip,uint16_t port,net::TYPE type
 		m_ori_addr.sin_family = AF_INET;
 		m_ori_addr.sin_port = htons(port);
 		m_ori_addr.sin_addr.s_addr = inet_addr(ip);
+
+		server_create();
 	}
 	else {
 		m_dst_addr.sin_family = AF_INET;
@@ -31,8 +33,10 @@ mc_tcp::mc_tcp(io_server *pio_server,const char *ip,uint16_t port,net::TYPE type
 
 mc_tcp::mc_tcp(io_server *pio_server,struct sockaddr_in &addr,net::TYPE type):m_io_server(pio_server),m_type(type)
 {
-	if(m_type == net::LISTEN)
+	if(m_type == net::LISTEN){
 		m_ori_addr = addr;
+		server_create();
+	}
 	else 
 		m_dst_addr = addr;
 
@@ -48,21 +52,6 @@ int32_t mc_tcp::async_accept(mc_tcp * ptcp,callback_cb cb)
 {
 	if(m_type == net::LISTEN){
 		m_ptcp = ptcp;
-		int32_t   on = 1;
-
-		m_fd = socket(AF_INET, SOCK_STREAM, 0);
-		if(m_fd < 0)
-			return m_fd;
-
-		setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-
-		int32_t ret = bind(m_fd,(struct sockaddr *)&m_ori_addr,sizeof(struct sockaddr_in));
-		if( ret < 0)
-			return ret;
-
-		ret = listen(m_fd,LISTEN_EVENTS);
-		if (ret < 0)
-			return ret;
 		m_io_server->add_event_msg(this,net::EVENT_ACCEPT);
 	}
 	m_cb = cb;	
@@ -85,6 +74,7 @@ void mc_tcp::async_read(std::shared_ptr<buffer> pbuffer,callback_cb cb)
 void mc_tcp::async_write(std::shared_ptr<buffer> pbuffer,callback_cb cb)
 {
 	m_buffer = pbuffer;
+	m_writed_len = 0;
 	m_cb = cb;
 	m_io_server->add_event_msg(this,net::EVENT_WRITE);
 }
@@ -166,6 +156,21 @@ int32_t mc_tcp::get_write_buffer_len()
 	return m_buffer->get_len();
 }
 
+char *mc_tcp::get_unwrited_buffer()
+{
+	return m_buffer->get() + m_writed_len;
+}
+
+int32_t mc_tcp::get_unwrited_buffer_len()
+{
+	return m_buffer->get_len() - m_writed_len;
+}
+
+void mc_tcp::set_writed_len(int32_t len)
+{
+	m_writed_len += len;
+}
+
 net::TYPE mc_tcp::get_type()
 {
 	return m_type;
@@ -200,6 +205,27 @@ struct sockaddr_in mc_tcp::get_ori_addr()
 struct sockaddr_in mc_tcp::get_dst_addr()
 {
 	return m_dst_addr;
+}
+
+int32_t mc_tcp::server_create()
+{
+	int32_t   on = 1;
+
+	m_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if(m_fd < 0)
+		return m_fd;
+
+	setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+
+	int32_t ret = bind(m_fd,(struct sockaddr *)&m_ori_addr,sizeof(struct sockaddr_in));
+	if( ret < 0)
+		return ret;
+
+	ret = listen(m_fd,LISTEN_EVENTS);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }
 
 

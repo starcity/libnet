@@ -10,7 +10,10 @@ namespace net
 			buffer(int32_t max_size = 4096)
 			{
 				m_buf = new char[max_size];
-				m_len = max_size;
+				if(NULL != m_buf)
+					m_len = max_size;
+				else 
+					m_len = 0;
 			}
 
 			buffer(char *buf,int32_t size)
