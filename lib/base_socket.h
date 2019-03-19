@@ -56,6 +56,7 @@ namespace net
 			virtual void		set_client_fd(int32_t fd) = 0;
 			virtual int32_t		get_client_fd() = 0;
 			virtual	void		set_socket_status(enum STATUS status) = 0;
+			virtual	void		close_fd() = 0;
 	};
 
 

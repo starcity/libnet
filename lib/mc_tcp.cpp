@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <unistd.h>
 #include "mc_tcp.h"
 
 #define		LISTEN_EVENTS	512
@@ -205,6 +206,11 @@ struct sockaddr_in mc_tcp::get_ori_addr()
 struct sockaddr_in mc_tcp::get_dst_addr()
 {
 	return m_dst_addr;
+}
+
+void mc_tcp::close_fd()
+{
+	close(m_fd);
 }
 
 int32_t mc_tcp::server_create()

@@ -25,29 +25,40 @@ int32_t io_server::init(int32_t nthread)
 	if( m_epfd < 0 )
 		return m_epfd;
 
+	m_nthread = nthread;
+
 	for( int32_t i = 0 ; i < nthread;i ++){
-		thread *t(new thread(&io_server::task_contention,this));
+		thread *t(new thread(&io_server::task_contention,this,false));
 		m_array_thread.push_back(t);
 	}
 	return 0;
 }
 
-void io_server::task_contention()
+void io_server::task_contention(bool is_single)
 {
 	event_task task;                                                        
-	while(m_running){                                                                                       
-		std::unique_lock<std::mutex> lk(m_mutex);                                                          
-		while(m_list_task.empty()){                                                                        
-			m_cond.wait(lk);                                                                             
-			if(!m_running)                                                                                
-				break;                                                                           
-		}                                                                                                           
-		if(!m_list_task.empty()){                                                                             
-			task = m_list_task.front();                                                             
-			m_list_task.pop_front();                                                                      
-			lk.unlock();                                                                                 
-			task.psock->callback_function(task.nret,task.event);
-		}                                      
+	if(true == is_single){
+		if(!m_list_task.empty()){ 
+				task = m_list_task.front();                                                             
+				m_list_task.pop_front();  
+				task.psock->callback_function(task.nret,task.event);
+		}
+	}
+	else {
+		while(m_running){                                                                                       
+			std::unique_lock<std::mutex> lk(m_mutex);                                                          
+			while(m_list_task.empty()){                                                                        
+				m_cond.wait(lk);                                                                             
+				if(!m_running)                                                                                
+					break;                                                                           
+			}                                                                                                           
+			if(!m_list_task.empty()){                                                                             
+				task = m_list_task.front();                                                             
+				m_list_task.pop_front();                                                                      
+				lk.unlock();                                                                                 
+				task.psock->callback_function(task.nret,task.event);
+			}                                      
+		}
 	}
 }
 
@@ -78,15 +89,21 @@ void io_server::run()
 	while(m_running){
 		handle_event_msg();
 		handle_epoll();
+		task_contention(true);
 	}
 }
 
 void io_server::set_task(event_task &task)
 {
-	std::unique_lock<std::mutex> lk(m_mutex); 
-	m_list_task.push_back(task);  
-	m_cond.notify_one();       
-	lk.unlock();  
+	if(0 == m_nthread){
+		m_list_task.push_back(task);  
+	}
+	else {
+		std::unique_lock<std::mutex> lk(m_mutex); 
+		m_list_task.push_back(task);  
+		m_cond.notify_one();       
+		lk.unlock();  
+	}
 }
 
 void io_server::set_socket_addr(base_socket *psock,bool is_client)
@@ -134,9 +151,13 @@ void io_server::add_event_msg(base_socket *psock,net::SOCKET_EVENT event)
 	msg.psock = psock;
 	msg.event = event;
 
-	m_event_mutex.lock();
-	m_list_msg.push_back(msg);
-	m_event_mutex.unlock();
+	if(0 == m_nthread)
+		m_list_msg.push_back(msg);
+	else {
+		m_event_mutex.lock();
+		m_list_msg.push_back(msg);
+		m_event_mutex.unlock();
+	}
 }
 
 void io_server::handle_event_msg()
@@ -145,12 +166,19 @@ void io_server::handle_event_msg()
 		return;
 
 	event_msg msg;
-	m_event_mutex.lock();
-	msg = m_list_msg.front();
-	m_list_msg.pop_front();
-	m_event_mutex.unlock();
+	if(0 == m_nthread){
+		msg = m_list_msg.front();
+		m_list_msg.pop_front();
+	}
+	else {
+		m_event_mutex.lock();
+		msg = m_list_msg.front();
+		m_list_msg.pop_front();
+		m_event_mutex.unlock();
+	}
 
 	struct epoll_event event;
+
 	switch(msg.event)
 	{
 		case net::EVENT_ACCEPT:
@@ -174,6 +202,7 @@ void io_server::handle_event_msg()
 			event_task task;
 			task.psock = msg.psock;
 			task.event = net::EVENT_CLOSE;
+			msg.psock->close_fd();
 			set_task(task);
 			break;
 	}

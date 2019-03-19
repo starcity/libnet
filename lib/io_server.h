@@ -21,14 +21,14 @@ namespace net
 			io_server();
 			~io_server();
 
-			int32_t init(int32_t nthread);
+			int32_t init(int32_t nthread = 0);
 			void	run();
 
 			void    add_event_msg(base_socket *psock,net::SOCKET_EVENT event);
 
 		private:
 			void    handle_epoll();
-			void    task_contention();
+			void    task_contention(bool is_single);
 			void	set_task(event_task &task);
 			void    set_socket_addr(base_socket *psock,bool is_client);
 			void    set_socket_status(base_socket *psock,int32_t ret);
@@ -48,6 +48,7 @@ namespace net
 			vector<thread *>    m_array_thread; 
 			list<event_task>    m_list_task;
 			list<event_msg>     m_list_msg;
+			int32_t				m_nthread;
 	};
 }
 

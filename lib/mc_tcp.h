@@ -47,6 +47,7 @@ namespace net
 			virtual void		set_client_fd(int32_t fd);
 			virtual int32_t		get_client_fd();
 			virtual	void		set_socket_status(net::STATUS status);
+			virtual void		close_fd();
 
 		private:
 			int32_t				server_create();
