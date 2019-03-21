@@ -28,16 +28,17 @@ namespace net
 
 		private:
 			void    handle_epoll();
-			void    task_contention(bool is_single);
+			void    task_contention();
 			void	set_task(event_task &task);
 			void    set_socket_addr(base_socket *psock,bool is_client);
-			void    set_socket_status(base_socket *psock,int32_t ret);
+			void    set_socket_status(base_socket *psock,int32_t ret,event_task &task);
 			void	handle_event_msg();
 			void	set_nonblock(int32_t fd);
 			int32_t event_connect(base_socket *psock);
 			void    handle_accept(base_socket *psock);
 			void    handle_read(base_socket *psock);
 			void    handle_write(base_socket *psock,uint32_t event);
+			void    add_epoll_ctl(uint32_t e,base_socket * psock);
 
 		private:
 			bool                m_running;

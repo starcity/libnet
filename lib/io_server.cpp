@@ -2,7 +2,9 @@
 #include <sys/epoll.h> 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <errno.h>
 #include "io_server.h"
+#include "error_code.h"
 
 #define	  MAX_EPOLL_SIZE		512
 
@@ -11,6 +13,7 @@ using net::io_server;
 io_server::io_server()
 {
 	m_running = true;
+	m_nthread = 0;
 }
 
 io_server::~io_server()
@@ -28,20 +31,20 @@ int32_t io_server::init(int32_t nthread)
 	m_nthread = nthread;
 
 	for( int32_t i = 0 ; i < nthread;i ++){
-		thread *t(new thread(&io_server::task_contention,this,false));
+		thread *t(new thread(&io_server::task_contention,this));
 		m_array_thread.push_back(t);
 	}
-	return 0;
+	return FUNCTION_SUCESSED;
 }
 
-void io_server::task_contention(bool is_single)
+void io_server::task_contention()
 {
 	event_task task;                                                        
-	if(true == is_single){
+	if(0  == m_nthread){
 		if(!m_list_task.empty()){ 
 				task = m_list_task.front();                                                             
 				m_list_task.pop_front();  
-				task.psock->callback_function(task.nret,task.event);
+				task.psock->callback_function(task.code,task.event);
 		}
 	}
 	else {
@@ -56,7 +59,7 @@ void io_server::task_contention(bool is_single)
 				task = m_list_task.front();                                                             
 				m_list_task.pop_front();                                                                      
 				lk.unlock();                                                                                 
-				task.psock->callback_function(task.nret,task.event);
+				task.psock->callback_function(task.code,task.event);
 			}                                      
 		}
 	}
@@ -89,7 +92,8 @@ void io_server::run()
 	while(m_running){
 		handle_event_msg();
 		handle_epoll();
-		task_contention(true);
+		if(0 == m_nthread)
+			task_contention();
 	}
 }
 
@@ -129,13 +133,24 @@ void io_server::set_socket_addr(base_socket *psock,bool is_client)
 	}
 }
 
-void io_server::set_socket_status(base_socket *psock,int32_t ret)
+void io_server::set_socket_status(base_socket *psock,int32_t ret,event_task &task)
 {
-	if( 0 == ret)
+	if(ret > 0 ){
+		task.code.ret = FUNCTION_SUCESSED;
+		psock->set_readed_len(ret);
+	}
+	else if(ret == 0){
+		task.code.ret = FUNCITON_SOCKET_PEER_CLOSE;
 		psock->set_socket_status(net::CLOSED);
-	else if(ret < 0){
-		if((errno != EINTR) && (errno != EWOULDBLOCK) && (errno != EAGAIN))
+	}
+	else {
+
+		if((errno != EINTR) && (errno != EWOULDBLOCK) && (errno != EAGAIN)){
+		task.code.ret = FUNCITON_SOCKET_PEER_CLOSE;
 		psock->set_socket_status(net::CLOSED);
+		}
+		else 
+			task.code.ret = FUNCTION_RETRY;
 	}
 }
 
@@ -177,67 +192,87 @@ void io_server::handle_event_msg()
 		m_event_mutex.unlock();
 	}
 
-	struct epoll_event event;
-
 	switch(msg.event)
 	{
 		case net::EVENT_ACCEPT:
 		case net::EVENT_READ:
-			event.data.ptr = static_cast<void *>(msg.psock);
-			event.events = EPOLLIN ;
-			epoll_ctl(m_epfd,EPOLL_CTL_ADD,msg.psock->get_socket_fd(),&event);
+			add_epoll_ctl(EPOLLIN,msg.psock);
 			break;
 		case net::EVENT_WRITE:
-			event.data.ptr = static_cast<void *>(msg.psock);
-			event.events = EPOLLOUT ;
-			epoll_ctl(m_epfd,EPOLL_CTL_ADD,msg.psock->get_socket_fd(),&event);
+			add_epoll_ctl(EPOLLOUT,msg.psock);
 			break;
 		case net::EVENT_CONNECT:
-			event_connect(msg.psock);
-			event.data.ptr = static_cast<void *>(msg.psock);
-			event.events = EPOLLOUT ;
-			epoll_ctl(m_epfd,EPOLL_CTL_ADD,msg.psock->get_socket_fd(),&event);
+			{
+				int32_t ret = event_connect(msg.psock);
+				if(ret <= 0){
+					event_task task;
+
+					task.psock = msg.psock;
+					task.event = net::EVENT_CONNECT;
+					task.code.ret = ret;
+					task.code.err = errno;
+					set_task(task);
+				}
+				else 
+					add_epoll_ctl(EPOLLOUT,msg.psock);
+			}
 			break;
 		case net::EVENT_CLOSE:
-			event_task task;
-			task.psock = msg.psock;
-			task.event = net::EVENT_CLOSE;
-			msg.psock->close_fd();
-			set_task(task);
+			{
+				event_task task;
+				task.psock = msg.psock;
+				task.event = net::EVENT_CLOSE;
+				task.code.ret = FUNCTION_SUCESSED;
+				task.code.err = errno;
+				msg.psock->close_fd();
+				set_task(task);
+			}
 			break;
 	}
 }
 
 int32_t io_server::event_connect(base_socket *psock)
 {
+	int ret = FUNCTION_SUCESSED;
 	int32_t fd = socket(AF_INET,SOCK_STREAM,0);
-	if(fd < 0)return -1;
+	if(fd < 0)return FUNCTION_SOCKET_FAILED;
+
+	psock->set_socket_fd(fd);
 
 	int32_t on = 1;
 	ioctl(fd,FIONBIO,&on);
 
 	struct sockaddr_in addr = psock->get_dst_addr();
-	connect(fd,(struct sockaddr *)&addr,sizeof(struct sockaddr_in));
-	psock->set_socket_fd(fd);
-	return fd;
+	if(connect(fd,(struct sockaddr *)&addr,sizeof(struct sockaddr_in)) < 0){
+		if( errno != EINPROGRESS ){
+			ret = FUNCTION_CONNECT_FAILED ;
+			psock->close_fd();
+		}
+		else 
+			ret = FUNCTION_CONNECT_WAIT;
+	}
+
+	return ret;
 }
 
 
 void io_server::handle_accept(base_socket *psock)
 {
-	int32_t fd = accept(psock->get_socket_fd(),NULL,NULL);
 	event_task task; 
-	if( fd > 0 )
-		task.nret = 0;
+
+	int32_t fd = accept(psock->get_socket_fd(),NULL,NULL);
+	if( fd > 0 ){
+		task.code.ret = FUNCTION_SUCESSED;
+		psock->set_client_fd(fd);
+		set_socket_addr(psock,true);
+		set_nonblock(fd);
+	}
 	else 
-		task.nret = fd;
-	psock->set_client_fd(fd);
+		task.code.ret = FUNCITON_ACCEPT_FAILED;
+
+	task.code.err = errno;
 	task.psock = psock;
 	task.event = net::EVENT_ACCEPT;
-
-	set_socket_addr(psock,true);
-
-	set_nonblock(fd);
 
 	set_task(task);
 
@@ -249,13 +284,13 @@ void io_server::handle_read(base_socket *psock)
 	event_task task;                                                                     
 	int32_t len = psock->get_read_buffer_len();
 	int32_t fd = psock->get_socket_fd();
-	task.nret = recv(fd,psock->get_read_buffer(),len,0);
+	int32_t ret = recv(fd,psock->get_read_buffer(),len,0);
+
+	set_socket_status(psock,ret,task);
+
+	task.code.err = errno;
 	task.psock = psock;
 	task.event = net::EVENT_READ;                                                                
-	set_socket_status(psock,task.nret);
-
-	psock->set_readed_len(task.nret);
-
 	set_task(task);
 
 	epoll_ctl(m_epfd,EPOLL_CTL_DEL,fd,NULL);
@@ -273,23 +308,36 @@ void io_server::handle_write(base_socket *psock,uint32_t event)
 			return;
 		}
 		else {
-			task.nret = psock->get_write_buffer_len();
+			task.code.ret = FUNCTION_SUCESSED;
 
 			task.event = net::EVENT_WRITE;   
 		}
 	}
 	else {
-		if(event == EPOLLOUT)
-			task.nret = 0;
-		else 
-			task.nret = -1;
+		if(event == EPOLLOUT){
+			task.code.ret = FUNCTION_SUCESSED;
+			psock->set_socket_status(net::CONNECTED);
+			set_socket_addr(psock,false);
+		}
+		else {
+			task.code.ret = FUNCTION_CONNECT_FAILED;
+			psock->close_fd();
+		}
 
+		task.code.err = errno;
 		task.event = net::EVENT_CONNECT;
-		psock->set_socket_status(net::CONNECTED);
-		set_socket_addr(psock,false);
 	}
 
 	epoll_ctl(m_epfd,EPOLL_CTL_DEL,fd,NULL);
 
 	set_task(task);
+}
+
+void  io_server::add_epoll_ctl(uint32_t e,base_socket * psock)
+{
+	struct epoll_event event;
+
+	event.data.ptr = static_cast<void *>(psock);
+	event.events = e ;
+	epoll_ctl(m_epfd,EPOLL_CTL_ADD,psock->get_socket_fd(),&event);
 }

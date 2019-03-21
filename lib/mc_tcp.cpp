@@ -49,14 +49,13 @@ mc_tcp::~mc_tcp()
 {
 }
 
-int32_t mc_tcp::async_accept(mc_tcp * ptcp,callback_cb cb)
+void mc_tcp::async_accept(mc_tcp * ptcp,callback_cb cb)
 {
+	m_cb = cb;	
 	if(m_type == net::LISTEN){
 		m_ptcp = ptcp;
 		m_io_server->add_event_msg(this,net::EVENT_ACCEPT);
 	}
-	m_cb = cb;	
-	return 0;
 }
 
 void mc_tcp::async_connect(callback_cb cb)
@@ -182,20 +181,26 @@ net::STATUS mc_tcp::get_status()
 	return m_status;
 }
 
-void mc_tcp::callback_function(int32_t ret,int32_t event)
+void mc_tcp::callback_function(error_code &code,int32_t event)
 {		
+	if(event == EVENT_ACCEPT)
+		m_cb(code,m_ptcp);
+	else 
+		m_cb(code,this);  
+	/*
 	switch(event)
 	{
 		case net::EVENT_ACCEPT:
-			m_cb(ret,m_ptcp);
+			m_cb(code,m_ptcp);
 			break;
 		case net::EVENT_READ:
 		case net::EVENT_WRITE:
 		case net::EVENT_CONNECT:
 		case net::EVENT_CLOSE:
-			m_cb(ret,this);
+			m_cb(code,this);
 			break;
 	}
+	*/
 }
 
 struct sockaddr_in mc_tcp::get_ori_addr()
@@ -224,12 +229,15 @@ int32_t mc_tcp::server_create()
 	setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 
 	int32_t ret = bind(m_fd,(struct sockaddr *)&m_ori_addr,sizeof(struct sockaddr_in));
-	if( ret < 0)
+	if( ret < 0){
+		close(m_fd);
 		return ret;
-
+	}
 	ret = listen(m_fd,LISTEN_EVENTS);
-	if (ret < 0)
+	if (ret < 0){
+		close(m_fd);
 		return ret;
+	}
 
 	return 0;
 }

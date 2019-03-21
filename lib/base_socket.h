@@ -29,6 +29,29 @@ namespace net
 		EVENT_CLOSE,
 	};
 
+	class base_socket;
+
+	typedef struct event_msg
+	{
+		enum SOCKET_EVENT  event;
+		base_socket		  *psock;
+	}event_msg;
+
+	typedef struct error_code
+	{
+		int32_t				ret;
+		int32_t				err;
+	}error_code;
+
+	typedef struct event_task
+	{
+		int32_t			   event;
+		error_code		   code;
+		base_socket       *psock;
+	}event_task;
+
+
+
 	class base_socket
 	{
 		public:
@@ -46,7 +69,7 @@ namespace net
 			virtual void		set_writed_len(int32_t len) = 0;
 			virtual enum TYPE	get_type() = 0; 
 			virtual enum STATUS get_status() = 0;
-			virtual void	    callback_function(int32_t ret,int32_t event) = 0;
+			virtual void	    callback_function(error_code &code,int32_t event) = 0;
 			virtual struct sockaddr_in get_ori_addr() = 0;
 			virtual struct sockaddr_in get_dst_addr() = 0; 
 			virtual void		set_client_ori_addr(struct sockaddr_in &addr) = 0;
@@ -58,22 +81,6 @@ namespace net
 			virtual	void		set_socket_status(enum STATUS status) = 0;
 			virtual	void		close_fd() = 0;
 	};
-
-
-	typedef struct event_msg
-	{
-		enum SOCKET_EVENT  event;
-		base_socket		  *psock;
-	}event_msg;
-
-
-	typedef struct event_task
-	{
-		int32_t			   nret;
-		int32_t			   event;
-		base_socket       *psock;
-	}event_task;
-
 }
 
 #endif

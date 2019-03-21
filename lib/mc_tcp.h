@@ -10,14 +10,14 @@ namespace net
 	class mc_tcp:public base_socket
 	{
 		public:
-			typedef std::function<void(int32_t ret,mc_tcp *)> callback_cb;
+			typedef std::function<void(error_code &code,mc_tcp *ptcp)> callback_cb;
 			mc_tcp(io_server *pio_server,net::TYPE type = net::NORMAL);
 			mc_tcp(io_server *pio_server,const char *ip,uint16_t port,net::TYPE type = net::NORMAL);
 			mc_tcp(io_server *pio_server,struct sockaddr_in &addr,net::TYPE type = net::NORMAL);
 			~mc_tcp();
 
 
-			int32_t			    async_accept(mc_tcp *ptcp,callback_cb cb);// must use in main thread
+			void			    async_accept(mc_tcp *ptcp,callback_cb cb);// must use in main thread
 			void				async_connect(callback_cb cb);
 			void 			    async_read(std::shared_ptr<buffer> pbuffer,callback_cb cb);
 			void 			    async_write(std::shared_ptr<buffer> pbuffer,callback_cb cb);
@@ -37,7 +37,7 @@ namespace net
 			virtual void		set_writed_len(int32_t len);
 			virtual enum TYPE	get_type(); 
 			virtual enum STATUS get_status();
-			virtual void	    callback_function(int32_t ret,int32_t event);
+			virtual void	    callback_function(error_code &code,int32_t event);
 			virtual struct sockaddr_in get_ori_addr();
 			virtual struct sockaddr_in get_dst_addr(); 
 			virtual void		set_ori_addr(struct sockaddr_in &addr);
@@ -54,7 +54,6 @@ namespace net
 
 
 		private:
-			net::TYPE					m_type;
 			net::STATUS					m_status;
 			int32_t						m_fd;
 			struct sockaddr_in			m_ori_addr;
@@ -65,6 +64,7 @@ namespace net
 			int32_t						m_writed_len;
 			io_server				   *m_io_server;
 			mc_tcp					   *m_ptcp;
+			net::TYPE					m_type;
 	};
 }
 
