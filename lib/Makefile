@@ -12,7 +12,7 @@ CXXFLAGS +=-I$(TOOLSPWD)
 CC=g++
 AR=ar
 
-SOURCES=$(CURRENTPWD)/io_server.o  \
+SOURCES=$(CURRENTPWD)/io_service.o  \
 		$(CURRENTPWD)/mc_tcp.o  \
 
 LIB=-lpthread 

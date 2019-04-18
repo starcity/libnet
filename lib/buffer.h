@@ -7,7 +7,8 @@ namespace net
 	class buffer
 	{
 		public:
-			buffer(int32_t max_size = 4096)
+
+		/*	buffer(int32_t max_size = 4096)
 			{
 				m_buf = new char[max_size];
 				if(NULL != m_buf)
@@ -16,36 +17,46 @@ namespace net
 					m_len = 0;
 			}
 
-			buffer(char *buf,int32_t size)
+		
+*/
+/*			buffer(const uint8_t *buf,int32_t size):m_cbuf(buf),m_len(size)
 			{
-				m_buf = buf;
-				m_len = size;
+			}
+*/
+			buffer(uint8_t *buf,int32_t size):m_buf(buf),m_len(size)
+			{
 			}
 
 			~buffer()
 			{
-				if(m_buf != NULL)
-					delete [] m_buf;
+			//	if(m_buf != NULL)
+			//		delete [] m_buf;
 			}
 
-			char *get()
+			uint8_t *get() 
 			{
 				return m_buf;
 			}
 
+/*			const uint8_t *get_const()
+			{
+				return m_cbuf;
+			}
+*/
 			int32_t get_len()
 			{
 				return m_len;
 			}
 
-			void    set_len(int32_t size)
+			void set_len(int32_t size)
 			{
 				m_len = size;
 			}
 
 		private:
-			char	   *m_buf;
-			int32_t		m_len;
+//			const uint8_t  *m_cbuf;
+			uint8_t		   *m_buf;
+			int32_t		    m_len;
 	};
 }
 #endif
