@@ -1,26 +1,26 @@
-TARGET=libnet.a
+TOPDIR=../../../..
 
-CURRENTPWD=$(shell pwd)
-BASELIB=$(CURRENTPWD)
-TOOLSPWD=$(CURRENTPWD)/
 
-CXXFLAGS += -DDEBUG
-CXXFLAGS += -O0 -g -Wall
+CXXFLAGS+= -Wl,--no-whole-archive   -pthread -fPIC
+ 
+TARGET="libnet.a"
+
+
+LIBS=
+#CXXFLAGS += -DDEBUG
+CXXFLAGS += -o0 -g -Wall
 CXXFLAGS += -std=c++11
-CXXFLAGS +=-I$(TOOLSPWD)
+
+SOURCES=io_service.o \
+	mc_tcp.o	\
+
 
 CC=g++
 AR=ar
+all:$(SOURCES)
+	$(AR) rcs $(TARGET) *.o 
+	
 
-SOURCES=$(CURRENTPWD)/io_service.o  \
-		$(CURRENTPWD)/mc_tcp.o  \
-
-LIB=-lpthread 
-
-$(TARGET):$(SOURCES)
-	$(CC) -c $(CXXFLAGS) $(LIB) $(LIBDIR)
-	$(AR) rcs $(TARGET) $(SOURCES)
-
-
+.PHONY: clean
 clean:
-	rm $(SOURCES) $(TARGET) -f
+	rm -f  ${TARGET} $(SOURCES) 

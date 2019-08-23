@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include "mc_tcp.h"
 
 #define		LISTEN_EVENTS	512
@@ -10,15 +11,16 @@ using net::mc_tcp;
 mc_tcp::mc_tcp(io_service *pio_service,net::TYPE type):m_io_service(pio_service),m_type(type)
 {
 	init();
-	if(m_type == net::NORMAL)
-		m_status = net::CLOSED;
+	if(m_type == net::LISTEN){
+		server_create();
+	}
 }
 
 mc_tcp::mc_tcp(io_service *pio_service,end_point ep,net::TYPE type):m_io_service(pio_service),m_type(type)
 {
 	init();
 	if(m_type == net::LISTEN){
-		m_ori_addr = ep;
+		m_dst_addr = ep;
 
 		server_create();
 	}
@@ -31,7 +33,7 @@ mc_tcp::mc_tcp(io_service *pio_service,end_point &ep,net::TYPE type):m_io_servic
 {
 	init();
 	if(m_type == net::LISTEN){
-		m_ori_addr = ep;
+		m_dst_addr = ep;
 
 		server_create();
 	}
@@ -48,6 +50,8 @@ void mc_tcp::init()
 {
 	m_ptcp = NULL;
 	m_event = 0;
+	m_epfd = -1;
+	m_status = net::CLOSED;
 }
 
 void mc_tcp::async_accept(mc_tcp * ptcp,callback_cb cb)
@@ -59,21 +63,18 @@ void mc_tcp::async_accept(mc_tcp * ptcp,callback_cb cb)
 	}
 }
 
-void mc_tcp::async_connect(callback_cb cb)
-{
-	m_cb[EVENT_CONNECT] = cb;
-	m_io_service->add_event_msg(this,net::EVENT_CONNECT);
-}
-
-void mc_tcp::async_connect(net::end_point &ep,callback_cb cb)
+void mc_tcp::async_connect(end_point &ep,callback_cb cb)
 {
 	m_dst_addr = ep;
 	m_cb[EVENT_CONNECT] = cb;
+
+	m_epfd = m_io_service->get_listen_epoll_fd();
+
 	m_io_service->add_event_msg(this,net::EVENT_CONNECT);
 }
 
 void mc_tcp::async_read(std::shared_ptr<buffer> pbuffer,callback_cb cb)
-{
+{	
 	m_read_buffer = pbuffer;
 	m_cb[EVENT_READ] = cb;
 	m_io_service->add_event_msg(this,net::EVENT_READ);
@@ -83,14 +84,17 @@ void mc_tcp::async_write(std::shared_ptr<buffer> pbuffer,callback_cb cb)
 {
 	m_write_buffer = pbuffer;
 	m_writed_len = 0;
+    
 	m_cb[EVENT_WRITE] = cb;
 	m_io_service->add_event_msg(this,net::EVENT_WRITE);
 }
 
 void mc_tcp::async_close(callback_cb cb)
-{
+{	
 	m_cb[EVENT_CLOSE] = cb;
 	m_io_service->add_event_msg(this,net::EVENT_CLOSE);
+
+//	set_socket_status(net::CLOSED);
 }
 
 void mc_tcp::set_ori_addr(end_point addr)
@@ -156,6 +160,7 @@ void mc_tcp::set_readed_len(uint32_t len)
 
 const uint8_t *mc_tcp::get_write_buffer()
 {
+	//return m_buffer->get_const();
 	return m_write_buffer->get();
 }
 
@@ -166,6 +171,7 @@ const int32_t mc_tcp::get_write_buffer_len()
 
 const uint8_t *mc_tcp::get_unwrited_buffer()
 {
+	//return m_buffer->get_const() + m_writed_len;
 	return m_write_buffer->get() + m_writed_len;
 }
 
@@ -206,7 +212,7 @@ uint32_t mc_tcp::get_event()
 
 void mc_tcp::reset_event()
 {
-	m_event = 0;
+    m_event = 0;
 }
 
 void mc_tcp::add_event(uint32_t e)
@@ -216,26 +222,26 @@ void mc_tcp::add_event(uint32_t e)
 
 void mc_tcp::del_event(uint32_t e)
 {
-	m_event &= ~e;
+	m_event &= ~e; 
 }
 
 void mc_tcp::callback_function(error_code &code,int32_t event)
 {		
 	callback_cb cb = m_cb[event];
-	m_cb[event] = nullptr;
-	if(event == EVENT_CLOSE)
-	{
+   	if(event == EVENT_CLOSE){
 		m_cb[EVENT_READ] = nullptr;
 		m_cb[EVENT_WRITE] = nullptr;
 		m_cb[EVENT_CONNECT] = nullptr;
 		m_cb[EVENT_CLOSE] = nullptr;
 	}
-
 	if(cb){
-		if(event == EVENT_ACCEPT)
-			cb(code,m_ptcp);
-		else 
+		if(event == EVENT_ACCEPT){
+			m_ptcp->set_epoll_fd(m_io_service->get_work_epoll_fd());
+		    cb(code,m_ptcp);
+		}
+		else {
 			cb(code,this);  
+		}
 	}
 }
 
@@ -251,7 +257,20 @@ net::end_point mc_tcp::get_dst_addr()
 
 void mc_tcp::close_fd()
 {
-	close(m_fd);
+    if(m_status != net::CLOSED){
+        close(m_fd);
+        m_status = net::CLOSED;
+    }
+}
+
+void mc_tcp::set_epoll_fd(int32_t epfd)
+{
+	m_epfd = epfd;
+}
+
+int32_t mc_tcp::get_epoll_fd()
+{
+	return m_epfd;
 }
 
 int32_t mc_tcp::server_create()
@@ -264,18 +283,23 @@ int32_t mc_tcp::server_create()
 
 	setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 
-	struct sockaddr_in addr = m_ori_addr.get();
-	int32_t ret = bind(m_fd,(struct sockaddr *)&addr,sizeof(addr));
+	ioctl(m_fd,FIONBIO,&on);
+
+	struct sockaddr_in addr = m_dst_addr.get();
+	int32_t ret = ::bind(m_fd,(struct sockaddr *)&addr,sizeof(addr));
 	if( ret < 0){
-		close(m_fd);
+		close_fd();
 		return ret;
 	}
 	ret = listen(m_fd,LISTEN_EVENTS);
 	if (ret < 0){
-		close(m_fd);
+		close_fd();
 		return ret;
 	}
 
+	m_status = net::SERVER;
+
+	m_epfd = m_io_service->get_listen_epoll_fd();
 	return 0;
 }
 

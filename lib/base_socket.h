@@ -22,6 +22,8 @@ namespace net
 	{
 		CONNECTED = 1,
 		CLOSED,
+        PEER_CLOSE,
+		SERVER,
 	};
 
 	enum SOCKET_EVENT
@@ -34,12 +36,6 @@ namespace net
 	};
 
 	class base_socket;
-
-	typedef struct event_msg
-	{
-		enum SOCKET_EVENT  event;
-		base_socket		  *psock;
-	}event_msg;
 
 	typedef struct error_code
 	{
@@ -79,12 +75,6 @@ namespace net
 			int32_t m_err;
 	}error_code;
 
-	typedef struct event_task
-	{
-		int32_t			   event;
-		error_code		   code;
-		base_socket       *psock;
-	}event_task;
 
 	class base_socket
 	{
@@ -105,7 +95,7 @@ namespace net
 			virtual enum STATUS     get_status() = 0;
 			virtual bool			is_open()    = 0;
 			virtual uint32_t		get_event() = 0;
-			virtual void			reset_event() = 0;
+            virtual void            reset_event() = 0;
 			virtual void			add_event(uint32_t e) = 0;
 			virtual void			del_event(uint32_t e) = 0;
 			virtual void			callback_function(error_code &code,int32_t event) = 0;
@@ -119,6 +109,8 @@ namespace net
 			virtual int32_t			get_client_fd() = 0;
 			virtual	void			set_socket_status(enum STATUS status) = 0;
 			virtual	void			close_fd() = 0;
+			virtual	void			set_epoll_fd(int32_t epfd) = 0;
+			virtual	int32_t			get_epoll_fd() = 0;
 	};
 }
 
